@@ -3,10 +3,10 @@ CREATE TYPE "OrderStatus" AS ENUM ('Placed', 'Preparing', 'Completed', 'Cancelle
 
 -- CreateTable
 CREATE TABLE "Customer" (
-    "id" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "phoneNumber" TEXT NOT NULL,
+    "id" SERIAL NOT NULL,
+    "name" VARCHAR(255) NOT NULL,
+    "email" VARCHAR(255) NOT NULL,
+    "phoneNumber" VARCHAR(20) NOT NULL,
     "address" TEXT NOT NULL,
 
     CONSTRAINT "Customer_pkey" PRIMARY KEY ("id")
@@ -14,8 +14,8 @@ CREATE TABLE "Customer" (
 
 -- CreateTable
 CREATE TABLE "Restaurant" (
-    "id" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
+    "id" SERIAL NOT NULL,
+    "name" VARCHAR(255) NOT NULL,
     "location" TEXT NOT NULL,
 
     CONSTRAINT "Restaurant_pkey" PRIMARY KEY ("id")
@@ -23,10 +23,10 @@ CREATE TABLE "Restaurant" (
 
 -- CreateTable
 CREATE TABLE "MenuItem" (
-    "id" TEXT NOT NULL,
-    "restaurantId" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "price" DECIMAL(65,30) NOT NULL,
+    "id" SERIAL NOT NULL,
+    "restaurantId" INTEGER NOT NULL,
+    "name" VARCHAR(255) NOT NULL,
+    "price" DECIMAL(10,2) NOT NULL,
     "isAvailable" BOOLEAN NOT NULL DEFAULT true,
 
     CONSTRAINT "MenuItem_pkey" PRIMARY KEY ("id")
@@ -34,11 +34,11 @@ CREATE TABLE "MenuItem" (
 
 -- CreateTable
 CREATE TABLE "Order" (
-    "id" TEXT NOT NULL,
-    "customerId" TEXT NOT NULL,
-    "restaurantId" TEXT NOT NULL,
+    "id" SERIAL NOT NULL,
+    "customerId" INTEGER NOT NULL,
+    "restaurantId" INTEGER NOT NULL,
     "status" "OrderStatus" NOT NULL DEFAULT 'Placed',
-    "totalPrice" DECIMAL(65,30) NOT NULL,
+    "totalPrice" DECIMAL(10,2) NOT NULL,
     "orderTime" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Order_pkey" PRIMARY KEY ("id")
@@ -46,9 +46,9 @@ CREATE TABLE "Order" (
 
 -- CreateTable
 CREATE TABLE "OrderItem" (
-    "id" TEXT NOT NULL,
-    "orderId" TEXT NOT NULL,
-    "menuItemId" TEXT NOT NULL,
+    "id" SERIAL NOT NULL,
+    "orderId" INTEGER NOT NULL,
+    "menuItemId" INTEGER NOT NULL,
     "quantity" INTEGER NOT NULL,
 
     CONSTRAINT "OrderItem_pkey" PRIMARY KEY ("id")

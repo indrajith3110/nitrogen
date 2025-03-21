@@ -1,163 +1,133 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
-import { prismaClient } from "./prisma";
+import express from 'express';
+import { prismaClient } from "./prisma.ts";
 
-const app = new Hono()
-const prisma = prismaClient
 
-// Create Customer
-app.post('/customers', async (c) => {
-  const data = await c.req.json()
-  const customer = await prisma.customer.create({ data })
-  return c.json(customer)
-})
-app.get('/customers', async (c) => {
-  const customers = await prisma.customer.findMany();
-  return c.json(customers);
-});
-// Retrieve Customer Details
-app.get('/customers/:id', async (c) => {
-  const id = c.req.param('id')
-  const customer = await prisma.customer.findUnique({ where: { id } })
-  return c.json(customer)
-})
-app.get('/customers/:id/orders', async (c) => {
-  const id = c.req.param('id');
-  const orders = await prisma.order.findMany({
-    where: { customerId: id }
-  });
+const honoApp = new Hono()
 
-  return c.json(orders);
+
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+const app = express();
+app.use(express.json());
+
+// 1. Customers
+app.post('/customers', async (req: express.Request, res: express.Response) => {
+    const { name, email, phoneNumber, address } = req.body;
+    const customer = await prisma.customer.create({ data: { name, email, phoneNumber, address } });
+    res.json(customer);
 });
 
-// Register Restaurant
-app.post('/restaurants', async (c) => {
-  const data = await c.req.json()
-  const restaurant = await prisma.restaurant.create({ data })
-  return c.json(restaurant)
-})
-
-// Get Menu of a Restaurant
-app.get('/restaurants/:id/menu', async (c) => {
-  const id = c.req.param('id')
-  const menu = await prisma.menuItem.findMany({ where: { restaurantId: id } })
-  return c.json(menu)
-})
-
-// Add Menu Item
-app.post('/restaurants/:id/menu', async (c) => {
-  const restaurantId = c.req.param('id')
-  const data = await c.req.json()
-  const menuItem = await prisma.menuItem.create({
-    data: { ...data, restaurantId },
-  })
-  return c.json(menuItem)
-})
-
-app.patch('/menu/:id', async (c) => {
-  const id = c.req.param('id');
-  const data = await c.req.json(); // { price: 10.99 } or { available: false }
-
-  const menuItem = await prisma.menuItem.update({
-    where: { id },
-    data
-  });
-
-  return c.json(menuItem);
+app.get('/customers/:id', async (req: express.Request, res: express.Response) => {
+    const customer = await prisma.customer.findUnique({ where: { id: Number(req.params.id) } });
+    res.json(customer);
 });
 
+app.get('/customers/:id/orders', async (req: express.Request, res: express.Response) => {
+    const orders = await prisma.order.findMany({ where: { customerId: Number(req.params.id) } });
+    res.json(orders);
+});
 
-// Place Order
-app.post('/orders', async (c) => {
-  const data = await c.req.json();
+// 2. Restaurants
+app.post('/restaurants', async (req: express.Request, res: express.Response) => {
+    const { name, location } = req.body;
+    const restaurant = await prisma.restaurant.create({ data: { name, location } });
+    res.json(restaurant);
+});
 
-  const order = await prisma.order.create({
-    data: {
-      customerId: data.customerId,
-      restaurantId: data.restaurantId,
-      totalPrice: data.totalPrice,
-      status: "Placed",
-      orderItems: {
-        create: data.orderItems.map((item: { menuItemId: string, quantity: number }) => ({
-          menuItemId: item.menuItemId,
-          quantity: item.quantity
-        }))
-      }
-    },
-    include: {
-      orderItems: true // To include created orderItems in response
+app.get('/restaurants/:id/menu', async (req: express.Request, res: express.Response) => {
+    const menu = await prisma.menuItem.findMany({ where: { restaurantId: Number(req.params.id), isAvailable: true } });
+    res.json(menu);
+});
+
+// 3. Menu Items
+app.post('/restaurants/:id/menu', async (req: express.Request, res: express.Response) => {
+    const { name, price, isAvailable } = req.body;
+    const menuItem = await prisma.menuItem.create({ data: { name, price, isAvailable, restaurantId: Number(req.params.id) } });
+    res.json(menuItem);
+});
+
+app.patch('/menu/:id', async (req: express.Request, res: express.Response) => {
+    const menuItem = await prisma.menuItem.update({ where: { id: Number(req.params.id) }, data: req.body });
+    res.json(menuItem);
+});
+
+// 4. Orders
+app.post('/orders', async (req: express.Request, res: express.Response) => {
+    const { customerId, restaurantId, items } = req.body;
+    let totalPrice = 0;
+    const orderItems = [];
+
+    for (const item of items) {
+        const menuItem = await prisma.menuItem.findUnique({ where: { id: item.menuItemId } });
+        if (!menuItem) {
+            res.status(400).json({ error: 'Invalid menu item' });
+            return;
+        }
+        totalPrice += Number(menuItem.price) * item.quantity;
+        orderItems.push({ menuItemId: item.menuItemId, quantity: item.quantity });
     }
-  });
 
-  return c.json(order);
+    const order = await prisma.order.create({
+        data: { customerId, restaurantId, totalPrice, status: 'Placed', orderItems: { create: orderItems } },
+    });
+    res.json(order);
 });
-// Get Order Details
-app.get('/orders/:id', async (c) => {
-  const id = c.req.param('id')
-  const order = await prisma.order.findUnique({ where: { id }, include: { orderItems: true } })
-  return c.json(order)
-})
-// Update Order Status
-app.patch('/orders/:id/status', async (c) => {
-  const id = c.req.param('id')
-  const { status } = await c.req.json()
-  const order = await prisma.order.update({ where: { id }, data: { status } })
-  return c.json(order)
-})
-// Get Revenue of a Restaurant
-app.get('/restaurants/:id/revenue', async (c) => {
-  const id = c.req.param('id')
-  const revenue = await prisma.order.aggregate({
-    where: { restaurantId: id },
-    _sum: { totalPrice: true },
-  })
-  return c.json({ revenue: revenue._sum.totalPrice || 0 })
-})
-app.get('/menu/top-items', async (c) => {
-  const topItems = await prisma.orderItem.groupBy({
-    by: ['menuItemId'],
-    _sum: { quantity: true },
-    orderBy: { _sum: { quantity: 'desc' } },
-    take: 1, // Get the top ordered item
-  });
 
-  if (topItems.length === 0) {
-    return c.json({ message: 'No menu items ordered yet' });
-  }
-
-  const menuItem = await prisma.menuItem.findUnique({
-    where: { id: topItems[0].menuItemId },
-    select: { id: true, name: true, price: true },
-  });
-
-  return c.json({
-    menuItem,
-    totalOrders: topItems[0]._sum.quantity,
-  });
+app.get('/orders/:id', async (req: express.Request, res: express.Response) => {
+    const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { orderItems: true } });
+    res.json(order);
 });
-// Get Top 5 Customers by Orders
-app.get('/customers/top', async (c) => {
-  const topCustomers = await prisma.order.groupBy({
-    by: ['customerId'],
-    _count: { id: true },
-    orderBy: { _count: { id: 'desc' } },
-    take: 5, // Get top 5 customers
-  });
 
-  if (topCustomers.length === 0) {
-    return c.json({ message: 'No customers found' });
-  }
-
-  const customers = await prisma.customer.findMany({
-    where: {
-      id: {
-        in: topCustomers.map((customer) => customer.customerId),
-      },
-    },
-  });
-
-  return c.json(customers);
+app.patch('/orders/:id/status', async (req: express.Request, res: express.Response) => {
+    const order = await prisma.order.update({ where: { id: Number(req.params.id) }, data: { status: req.body.status } });
+    res.json(order);
 });
-// Start Server
-serve(app)
-console.log('Server running on http://localhost:3000')
+
+// 5. Reports & Insights
+app.get('/restaurants/:id/revenue', async (req: express.Request, res: express.Response) => {
+    const revenue = await prisma.order.aggregate({ _sum: { totalPrice: true }, where: { restaurantId: Number(req.params.id) } });
+    res.json({ totalRevenue: revenue._sum.totalPrice || 0 });
+});
+
+app.get('/menu/top-items', async (req: express.Request, res: express.Response) => {
+    const topItems = await prisma.orderItem.groupBy({ by: ['menuItemId'], _sum: { quantity: true }, orderBy: { _sum: { quantity: 'desc' } }, take: 5 });
+    res.json(topItems);
+});
+
+// app.get('/customers/top', async (req: express.Request, res: express.Response) => {
+//     const topCustomers = await prisma.order.groupBy({ by: ['customerId'], _count: { customerId: true }, orderBy: { _count: { customerId: 'desc' } }, take: 5 });
+//     res.json(topCustomers);
+// });
+app.get('/customers/top', async (req: express.Request, res: express.Response) => {
+    try {
+        const topCustomers = await prisma.order.groupBy({
+            by: ['customerId'],
+            _count: { customerId: true },
+            orderBy: { _count: { customerId: 'desc' } },
+            take: 5,
+        });
+
+        const customers = await Promise.all(
+            topCustomers.map(async (customer) => {
+                const customerDetails = await prisma.customer.findUnique({
+                    where: { id: customer.customerId },
+                    select: { id: true, name: true, email: true },
+                });
+                return { ...customerDetails, totalOrders: customer._count.customerId };
+            })
+        );
+
+        res.json(customers);
+    } catch (error) {
+        console.error("Error fetching top customers:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+    
+
+app.listen(3000, () => {
+  console.log('Server is running on http://localhost:3000');
+});
